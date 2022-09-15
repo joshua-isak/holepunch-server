@@ -25,6 +25,9 @@ class Server:
         self.player_limit = ""
         self.last_update = 0
 
+    def toJson(self):
+        return json.dumps(self, default=lambda o: o.__dict__)
+
 
 
 # Thread to periodically check if a server is still broadcasting
@@ -37,9 +40,9 @@ def keepalive_broadcast(running):
 
         # Flag a server for removal if it hasn't updated in KEEPALIVE_FREQ seconds
         for x in broadcasting_servers.values():
-            if (time.time() - x.last_update > KEEPALIVE_FREQ):
-                to_remove.append(x.ip + str(x.port))
-                print("{} has timed out".format(x.name))
+            if (time.time() - x["last_update"] > KEEPALIVE_FREQ):
+                to_remove.append(x["ip"] + str(x["port"]))
+                print("{} has timed out".format(x["name"]))
 
         # Remove servers from broadcast dict (done here to prevent dict changed size during iteration error)
         for y in to_remove:
@@ -57,12 +60,13 @@ def handle_server_new_broadcast(data):
         raise Exception("Exception: Unable to add broadcasting server, limit reached")
 
     # Create the new server object
-    new_server = Server(data)
-    new_server.last_update = time.time()
+    new_server = data #Server(data)
+    new_server["last_update"] = time.time()  #.last_update = time.time()
+    new_server.pop("message_type")
 
     # Add the server to the list of currently broadcasting servers
-    broadcasting_servers[new_server.ip + str(new_server.port)] = new_server
-    print("Broadcasting new server '{}' from {}:{}".format(new_server.name, new_server.ip, new_server.port))
+    broadcasting_servers[new_server["ip"] + str(new_server["port"])] = new_server
+    print("Broadcasting new server '{}' from {}:{}".format(new_server["name"], new_server["ip"], new_server["port"]))
 
 
 
@@ -71,7 +75,7 @@ def handle_server_update_broadcast(data):
 
     server = broadcasting_servers[data["ip"] + str(data["port"])]
 
-    server.last_update = time.time()
+    server["last_update"] = time.time()
 
 
 
@@ -79,10 +83,16 @@ def handle_server_update_broadcast(data):
 # Send a client information about all servers currently broadcasting
 def handle_client_list_request(data, sock):
 
+    print("received new client list request")
+
     # Prepare encoded json object containing all broadcasting server information
-    response = broadcasting_servers.copy()
+    response = {}
+    response["servers"] = broadcasting_servers
+    # for x in broadcasting_servers:
+    #     response[x] = broadcasting_servers[x].toJson()
+
     response["message_type"] = "client_list_response"
-    response = json.loads(data).encode('utf-8')
+    response = json.dumps(response).encode('utf-8')  #.replace("\\", "").encode('utf-8')
 
     # TODO add a max size check?? split into multiple packets?? TCP??
 
