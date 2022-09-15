@@ -1,9 +1,9 @@
 from audioop import add
 import socket
 import json
-import threading
 from threading import Thread
 import time
+import traceback
 
 
 PORT = 420              # port this server will run on
@@ -18,7 +18,7 @@ class Server:
     def __init__(self, data):
         self.ip = data["ip"]
         self.port = data["port"]
-        self.name = ""
+        self.name = data["name"]
         self.version = ""
         self.description = ""
         self.player_count = 0
@@ -28,14 +28,22 @@ class Server:
 
 
 # Thread to periodically check if a server is still broadcasting
-def keepalive_broadcast():
+def keepalive_broadcast(running):
 
-    time.sleep(KEEPALIVE_FREQ)
+    while running:
 
-    # Remove server from broadcasting list if it hasn't updated in KEEPALIVE_FREQ seconds
-    for x in broadcasting_servers:
-        if (time.time() - x.last_update > KEEPALIVE_FREQ):
-            broadcasting_servers.pop(x.ip + str(x.port))
+        time.sleep(KEEPALIVE_FREQ)
+        to_remove = []
+
+        # Flag a server for removal if it hasn't updated in KEEPALIVE_FREQ seconds
+        for x in broadcasting_servers.values():
+            if (time.time() - x.last_update > KEEPALIVE_FREQ):
+                to_remove.append(x.ip + str(x.port))
+                print("{} has timed out".format(x.name))
+
+        # Remove servers from broadcast dict (done here to prevent dict changed size during iteration error)
+        for y in to_remove:
+            broadcasting_servers.pop(y)
 
 
 
@@ -55,6 +63,7 @@ def handle_server_new_broadcast(data):
     # Add the server to the list of currently broadcasting servers
     broadcasting_servers[new_server.ip + str(new_server.port)] = new_server
     print("Broadcasting new server from {}:{}".format(new_server.ip, new_server.port))
+    print(data)
 
 
 
@@ -65,8 +74,18 @@ def handle_server_update_broadcast():
 
 
 # Send a client information about all servers currently broadcasting
-def handle_client_list_request():
-    pass
+def handle_client_list_request(data, sock):
+
+    # Prepare encoded json object containing all broadcasting server information
+    response = broadcasting_servers.copy()
+    response["message_type"] = "client_list_response"
+    response = json.loads(data).encode('utf-8')
+
+    # TODO add a max size check?? split into multiple packets?? TCP??
+
+    # Send the response to the client
+    address = (data["ip"], data["port"])
+    sock.sendto(response, address)
 
 
 
@@ -78,7 +97,7 @@ def handle_client_join_request():
 
 def main():
 
-    running = True
+    running = True      # TODO this needs to be a global variable or something, the keepalive thread doesn't shut down properly
 
     # Set up UDP socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -86,7 +105,7 @@ def main():
     print("Listening for incoming connections on port {}".format(PORT))
 
     # Start the keepalive thread
-    k = Thread(target=keepalive_broadcast, args=())
+    k = Thread(target=keepalive_broadcast, args=(running,))
     k.start()
 
     # Packet handling loop
@@ -95,7 +114,7 @@ def main():
         try:
             # Read in data from an incoming packet
             raw_data, address = sock.recvfrom(2048)         # read bytes from the socket
-            data = json.load(raw_data.decode('utf-8'))      # decode packet data as dictionary
+            data = json.loads(raw_data.decode('utf-8'))      # decode packet data as dictionary
             packet_type = data["message_type"]
 
             # Add socket connection information to data dictionary
@@ -104,16 +123,16 @@ def main():
 
             # Set up a thread to handle packet type
             if (packet_type == "server_new_broadcast"):
-                t = Thread(target=handle_server_new_broadcast, args=(data))
+                t = Thread(target=handle_server_new_broadcast, args=(data,))
 
             elif (packet_type == "server_update_broadcast"):
-                t = Thread(target=handle_server_update_broadcast, args=(data))
+                t = Thread(target=handle_server_update_broadcast, args=(data,))
 
             elif (packet_type == "client_list_request"):
-                t = Thread(target=handle_client_list_request, args=(data))
+                t = Thread(target=handle_client_list_request, args=(data, sock))
 
             elif(packet_type == "client_join_request"):
-                t = Thread(target=handle_client_join_request, args=(data))
+                t = Thread(target=handle_client_join_request, args=(data,))
 
             else:
                 raise Exception("Exception: packet_type not recognized")
@@ -121,8 +140,15 @@ def main():
             # Start the packet handling thread
             t.start()
 
+
+        except KeyboardInterrupt:
+            print("\nshutting down server...")
+            running = False
+            break
+
         except Exception as e:
             print("Error handling incoming connection!\n{}".format(e))
+            traceback.print_exc()
             continue
 
 
