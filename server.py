@@ -8,7 +8,7 @@ import traceback
 
 PORT = 420              # port this server will run on
 SERVER_LIMIT = 0        # limit of broadcasting servers, 0 for no limit
-KEEPALIVE_FREQ = 10     # how often to check for a server's last broadcast
+KEEPALIVE_FREQ = 15     # how often to check for a server's last broadcast
 
 
 broadcasting_servers = {}
@@ -62,14 +62,17 @@ def handle_server_new_broadcast(data):
 
     # Add the server to the list of currently broadcasting servers
     broadcasting_servers[new_server.ip + str(new_server.port)] = new_server
-    print("Broadcasting new server from {}:{}".format(new_server.ip, new_server.port))
-    print(data)
+    print("Broadcasting new server '{}' from {}:{}".format(new_server.name, new_server.ip, new_server.port))
 
 
 
 # Update an existing server's data in the list of broadcasting servers
-def handle_server_update_broadcast():
-    pass
+def handle_server_update_broadcast(data):
+
+    server = broadcasting_servers[data["ip"] + str(data["port"])]
+
+    server.last_update = time.time()
+
 
 
 
