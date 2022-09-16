@@ -97,7 +97,7 @@ def handle_client_list_request(data, sock):
     # TODO add a max size check?? split into multiple packets?? TCP??
 
     # Send the response to the client
-    address = (data["ip"], str(data["port"]))
+    address = (data["ip"], data["port"])
     sock.sendto(response, address)
 
 
