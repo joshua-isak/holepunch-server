@@ -83,7 +83,7 @@ def handle_server_update_broadcast(data):
 # Send a client information about all servers currently broadcasting
 def handle_client_list_request(data, sock):
 
-    print("received new client list request from {}".format(data["ip"]+":"+data["port"]))
+    print("received new client list request from {}".format(data["ip"]+":"+str(data["port"])))
 
     # Prepare encoded json object containing all broadcasting server information
     response = {}
